@@ -94,8 +94,8 @@ function drupalgap_init() {
 function drupalgap_onload() {
   try {
 
-    // At this point, the Drupal object has been initialized by jDrupal and has
-    // loaded the app/settings.js into the <head>. Let's add DrupalGap's modules
+    // At this point, the Drupal object has been initialized by jDrupal and the
+    // app/settings.js file was loaded in <head>. Let's add DrupalGap's modules
     // onto the Drupal JSON object. Remember, all of the module source code is
     // included via the makefile's bin generation. However, the core modules
     // hook_install() implementations haven't been called yet, so we add them to
@@ -155,7 +155,7 @@ function drupalgap_onload() {
 function _drupalgap_deviceready() {
   try {
 
-    // PhoneGap is loaded and it is now safe for DrupalGap to start...
+    // The device is now ready, it is now safe for DrupalGap to start...
     drupalgap_bootstrap();
 
     // Verify site path is set.
@@ -5050,13 +5050,16 @@ function theme(hook, variables) {
  * needed for an autocomplete.
  */
 // The autocomplete text field input selector.
-var _theme_autocomplete_input_selector;
+var _theme_autocomplete_input_selector = {};
 
 // The autocomplete remote boolean.
-var _theme_autocomplete_remote;
+var _theme_autocomplete_remote = {};
 
 // The theme autocomplete variables.
-var _theme_autocomplete_variables;
+var _theme_autocomplete_variables = {};
+
+// The theme autocomplete variables.
+var _theme_autocomplete_success_handlers = {};
 
 /**
  * Themes an autocomplete.
@@ -5066,15 +5069,29 @@ var _theme_autocomplete_variables;
 function theme_autocomplete(variables) {
   try {
     var html = '';
+    
+    // We need to have a unique identifier for this autocomplete. If it is a
+    // field, use the field name. Otherwise use the id attribute if it is
+    // provided or generate a random one. Then finally attach the autocomplete
+    // id to the variables so it can be passed along.
+    var autocomplete_id = null;
+    if (typeof variables.field_info_field !== 'undefined') {
+      autocomplete_id = variables.field_info_field.field_name;
+    }
+    else if (typeof variables.attributes.id !== 'undefined') {
+      autocomplete_id = variables.attributes.id;
+    }
+    else { autocomplete_id = user_password(); }
+    variables.autocomplete_id = autocomplete_id;
 
     // Hold onto a copy of the variables.
-    _theme_autocomplete_variables = variables;
+    _theme_autocomplete_variables[autocomplete_id] = variables;
 
-    // Are we dealing with a remote data set.
+    // Are we dealing with a remote data set?
     var remote = false;
     if (variables.remote) { remote = true; }
     variables.remote = remote;
-    _theme_autocomplete_remote = variables.remote;
+    _theme_autocomplete_remote[autocomplete_id] = variables.remote;
 
     // Make sure we have an id to use on the list.
     var id = null;
@@ -5084,8 +5101,13 @@ function theme_autocomplete(variables) {
       variables.attributes.id = id;
     }
 
-    // We need a hidden input to hold the value.
-    html += theme('hidden', { attributes: { id: id } });
+    // We need a hidden input to hold the value. If a default value
+    // was provided by a form element, use it.
+    var hidden_attributes = { id: id };
+    if (variables.element && typeof variables.element.default_value !== 'undefined') {
+      hidden_attributes.value = variables.element.default_value;
+    }
+    html += theme('hidden', { attributes: hidden_attributes });
 
     // Now we need an id for the list.
     var list_id = id + '-list';
@@ -5108,7 +5130,7 @@ function theme_autocomplete(variables) {
       // We have a remote data set.
       js += '<script type="text/javascript">' +
         '$("#' + list_id + '").on("filterablebeforefilter", function(e, d) { ' +
-          '_theme_autocomplete(this, e, d); ' +
+          '_theme_autocomplete(this, e, d, "' + autocomplete_id + '"); ' +
         '});' +
       '</script>';
     }
@@ -5120,9 +5142,12 @@ function theme_autocomplete(variables) {
 
     // Save a reference to the autocomplete text field input.
     var selector = '#' + drupalgap_get_page_id() +
+      ' #' + id + ' + form.ui-filterable' +
       ' input[data-type="search"]';
     js += '<script type="text/javascript">' +
-      '_theme_autocomplete_input_selector = \'' + selector + '\';' +
+      '_theme_autocomplete_input_selector["' + autocomplete_id + '"] = \'' +
+        selector +
+      '\';' +
     '</script>';
 
     // Theme the list and add the js to it, then return the html.
@@ -5138,22 +5163,24 @@ function theme_autocomplete(variables) {
  * @param {Object} list The unordered list that displays the items.
  * @param {Object} e
  * @param {Object} data
+ * @param {String} autocomplete_id
  */
-function _theme_autocomplete(list, e, data) {
+function _theme_autocomplete(list, e, data, autocomplete_id) {
   try {
     // Make sure a filter is present.
-    if (typeof _theme_autocomplete_variables.filter === 'undefined') {
+    if (typeof _theme_autocomplete_variables[autocomplete_id].filter === 'undefined') {
       console.log(
         '_theme_autocomplete - A "filter" was not supplied.'
       );
       return;
     }
+
     // Make sure a value and/or label has been supplied so we know how to render
     // the items in the autocomplete list.
     var value_provided =
-      typeof _theme_autocomplete_variables.value !== 'undefined' ? true : false;
+      typeof _theme_autocomplete_variables[autocomplete_id].value !== 'undefined' ? true : false;
     var label_provided =
-      typeof _theme_autocomplete_variables.label !== 'undefined' ? true : false;
+      typeof _theme_autocomplete_variables[autocomplete_id].label !== 'undefined' ? true : false;
     if (!value_provided && !label_provided) {
       console.log(
         '_theme_autocomplete - A "value" and/or "label" was not supplied.'
@@ -5164,12 +5191,12 @@ function _theme_autocomplete(list, e, data) {
       // We have a value and/or label. If one isn't provided, set it equal to
       // the other.
       if (!value_provided) {
-        _theme_autocomplete_variables.value =
-          _theme_autocomplete_variables.label;
+        _theme_autocomplete_variables[autocomplete_id].value =
+          _theme_autocomplete_variables[autocomplete_id].label;
       }
       else if (!label_provided) {
-        _theme_autocomplete_variables.label =
-          _theme_autocomplete_variables.value;
+        _theme_autocomplete_variables[autocomplete_id].label =
+          _theme_autocomplete_variables[autocomplete_id].value;
       }
     }
     // Setup the vars to handle this widget.
@@ -5186,61 +5213,119 @@ function _theme_autocomplete(list, e, data) {
         '<span class="ui-icon ui-icon-loading"></span>' +
         '</div></li>');
       $ul.listview('refresh');
-      // Prepare the path to the view.
-      var path = _theme_autocomplete_variables.path + '?' +
-        _theme_autocomplete_variables.filter + '=' + encodeURIComponent(value);
-      // Any extra params to send along?
-      if (_theme_autocomplete_variables.params) {
-        path += '&' + _theme_autocomplete_variables.params;
-      }
-      // Retrieve JSON results. Keep in mind, we use this for retrieving Views
-      // JSON results and custom hook_menu() path results in Drupal.
-      views_datasource_get_view_result(path, {
-          success: function(results) {
-            // If this was a custom path, don't use a wrapper around the
-            // results like the one used by Views Datasource.
-            var wrapped = true;
-            if (_theme_autocomplete_variables.custom) { wrapped = false; }
 
-            // Extract the result items based on the presence of the wrapper or
-            // not.
-            var result_items = null;
-            if (wrapped) { result_items = results[results.view.root]; }
-            else { result_items = results; }
+      // Let's first build the success handler that will place the items into
+      // the autocomplete list.
+      _theme_autocomplete_success_handlers[autocomplete_id] = function(_autocomplete_id, result_items, _wrapped, _child) {
+        try {
+          // If there are no results, just return.
+          if (result_items.length == 0) { return; }
 
-            // If there are no results, just return.
-            if (result_items.length == 0) { return; }
+          // Convert the result into an items array for a list. Each item will
+          // be a JSON object with a "value" and "label" properties.
+          var items = [];
+          var _value = _theme_autocomplete_variables[_autocomplete_id].value;
+          var _label = _theme_autocomplete_variables[_autocomplete_id].label;
+          $.each(result_items, function(index, object) {
+              var _item = null;
+              if (_wrapped) { _item = object[_child]; }
+              else { _item = object; }
+              var item = {
+                value: _item[_value],
+                label: _item[_label]
+              };
+              items.push(item);
+          });
 
-            // Convert the result into an items array for a list. Each item will
-            // be a JSON object with a "value" and "label" properties.
-            var items = [];
-            var _value = _theme_autocomplete_variables.value;
-            var _label = _theme_autocomplete_variables.label;
-            $.each(result_items, function(index, object) {
-                var _item = null;
-                if (wrapped) { _item = object[results.view.child]; }
-                else { _item = object; }
-                var item = {
-                  value: _item[_value],
-                  label: _item[_label]
-                };
-                items.push(item);
-            });
+          // Now render the items, add them to list and refresh the list.
+          if (items.length == 0) { return; }
+          _theme_autocomplete_variables[_autocomplete_id].items = items;
+          var _items = _theme_autocomplete_prepare_items(
+            _theme_autocomplete_variables[_autocomplete_id]
+          );
+          $.each(_items, function(index, item) {
+            html += '<li>' + item + '</li>';
+          });
+          $ul.html(html);
+          $ul.listview('refresh');
+          $ul.trigger('updatelayout');
+        }
+        catch (error) {
+          console.log('_theme_autocomplete_success_handlers[' + _autocomplete_id + '] - ' + error);
+        }
+      };
 
-            // Now render the items, add them to list and refresh the list.
-            if (items.length == 0) { return; }
-            _theme_autocomplete_variables.items = items;
-            var _items = _theme_autocomplete_prepare_items(
-              _theme_autocomplete_variables
-            );
-            $.each(_items, function(index, item) {
-              html += '<li>' + item + '</li>';
-            });
-            $ul.html(html);
-            $ul.listview('refresh');
-            $ul.trigger('updatelayout');
+      // Depending on the handler, built the path and call the Drupal site for
+      // the data.
+      var handler = _theme_autocomplete_variables[autocomplete_id].field_info_field.settings.handler;
+      switch (handler) {
+
+        // Views (and Organic Groups)
+        case 'views':
+        case 'og':
+          // Prepare the path to the view.
+          var path = _theme_autocomplete_variables[autocomplete_id].path + '?' +
+            _theme_autocomplete_variables[autocomplete_id].filter + '=' + encodeURIComponent(value);
+          // Any extra params to send along?
+          if (_theme_autocomplete_variables[autocomplete_id].params) {
+            path += '&' + _theme_autocomplete_variables[autocomplete_id].params;
           }
-      });
+
+          // Retrieve JSON results. Keep in mind, we use this for retrieving Views
+          // JSON results and custom hook_menu() path results in Drupal.
+          views_datasource_get_view_result(path, {
+              success: function(results) {
+                // If this was a custom path, don't use a wrapper around the
+                // results like the one used by Views Datasource.
+                var wrapped = true;
+                if (_theme_autocomplete_variables[autocomplete_id].custom) { wrapped = false; }
+
+                // Extract the result items based on the presence of the wrapper or
+                // not.
+                var result_items = null;
+                if (wrapped) { result_items = results[results.view.root]; }
+                else { result_items = results; }
+
+                // Finally call the sucess handler.
+                var fn = _theme_autocomplete_success_handlers[autocomplete_id];
+                fn(autocomplete_id, result_items, wrapped, results.view.child);
+              }
+          });
+          break;
+
+        // Simple entity selection mode, use the Index resource for the entity
+        // type.
+        case 'base':
+          var field_settings = _theme_autocomplete_variables[autocomplete_id].field_info_field.settings;
+          var index_resource = field_settings.target_type + '_index';
+          if (!drupalgap_function_exists(index_resource)) {
+            console.log('WARNING - _theme_autocomplete - ' + index_resource + '() does not exist!');
+            return;
+          }
+          var options = {
+            fields: ['nid', 'title'],
+            parameters: {
+              title: '%' + value + '%'
+            },
+            parameters_op: {
+              title: 'like'
+            }
+          };
+          $.each(field_settings.handler_settings.target_bundles, function(bundle, name) {
+              options.parameters.type = bundle;
+              // @TODO allow multiple bundles to be indexed.
+              return false;
+          });
+          var fn = window[index_resource];
+          fn(options, {
+              success: function(results) {
+                var fn = _theme_autocomplete_success_handlers[autocomplete_id];
+                fn(autocomplete_id, results, false);
+              }
+          });
+          break;
+      }
+
     }
   }
   catch (error) { console.log('_theme_autocomplete - ' + error); }
@@ -5276,7 +5361,7 @@ function _theme_autocomplete_prepare_items(variables) {
               value: value,
               onclick: '_theme_autocomplete_click(\'' +
                 variables.attributes.id +
-              '\', this)'
+              '\', this, \'' + variables.autocomplete_id + '\')'
             }
           };
           var _item = l(label, null, options);
@@ -5292,14 +5377,15 @@ function _theme_autocomplete_prepare_items(variables) {
  * An internal function used to handle clicks on items in autocomplete results.
  * @param {String} id The id of the hidden input that holds the value.
  * @param {Object} item The list item anchor that was just clicked.
+ * @param {String} autocomplete_id
  */
-function _theme_autocomplete_click(id, item) {
+function _theme_autocomplete_click(id, item, autocomplete_id) {
   try {
     // Set the hidden input with the value, and the text field with the text.
     var list_id = id + '-list';
     $('#' + id).val($(item).attr('value'));
-    $(_theme_autocomplete_input_selector).val($(item).html());
-    if (_theme_autocomplete_remote) {
+    $(_theme_autocomplete_input_selector[autocomplete_id]).val($(item).html());
+    if (_theme_autocomplete_remote[autocomplete_id]) {
       $('#' + list_id).html('');
     }
     else {
@@ -5308,10 +5394,10 @@ function _theme_autocomplete_click(id, item) {
     }
     // Now fire the item onclick handler, if one was provided.
     if (
-      _theme_autocomplete_variables.item_onclick &&
-      drupalgap_function_exists(_theme_autocomplete_variables.item_onclick)
+      _theme_autocomplete_variables[autocomplete_id].item_onclick &&
+      drupalgap_function_exists(_theme_autocomplete_variables[autocomplete_id].item_onclick)
     ) {
-      var fn = window[_theme_autocomplete_variables.item_onclick];
+      var fn = window[_theme_autocomplete_variables[autocomplete_id].item_onclick];
       fn(id, $(item));
     }
   }
@@ -5435,6 +5521,43 @@ function theme_image(variables) {
     return '<img ' + drupalgap_attributes(variables.attributes) + ' />';
   }
   catch (error) { console.log('theme_image - ' + error); }
+}
+
+
+/**
+ * Implementation of theme_audio().
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_audio(variables) {
+  try {
+    // Turn the path, alt and title into attributes if they are present.
+    if (variables.path) { variables.attributes.src = variables.path; }
+    if (variables.alt) { variables.attributes.alt = variables.alt; }
+    if (variables.title) { variables.attributes.title = variables.title; }
+    // Render the audio player.
+    return '<audio controls ' + drupalgap_attributes(variables.attributes) +
+    '></audio>';
+  }
+  catch (error) { console.log('theme_audio - ' + error); }
+}
+
+/**
+ * Implementation of theme_video().
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_video(variables) {
+  try {
+    // Turn the path, alt and title into attributes if they are present.
+    if (variables.path) { variables.attributes.src = variables.path; }
+    if (variables.alt) { variables.attributes.alt = variables.alt; }
+    if (variables.title) { variables.attributes.title = variables.title; }
+    // Render the video player.
+    return '<video controls ' + drupalgap_attributes(variables.attributes) +
+    '></video>';
+  }
+  catch (error) { console.log('theme_video - ' + error); }
 }
 
 /**
@@ -6567,15 +6690,15 @@ function drupalgap_entity_render_content(entity_type, entity) {
   try {
     entity.content = '';
     // Render each field on the entity, using the default display. The fields
-    // need to be appended accorind to their weight, so we'll keep track of
-    // the weights and rendered field content as we iterate through the fields,
-    // then at the end will append them in order onto the entity's content.
+    // need to be appended according to their weight, so we'll keep track of
+    // the weights and displays, then at the end we'll render them and append
+    // them in order onto the entity's content.
     var bundle = entity.type;
     if (entity_type == 'comment') { bundle = entity.bundle; }
     var field_info = drupalgap_field_info_instances(entity_type, bundle);
     if (!field_info) { return; }
-    var field_content = {};
     var field_weights = {};
+    var field_displays = {};
     $.each(field_info, function(field_name, field) {
         // Determine which display mode to use. The default mode will be used
         // if the drupalgap display mode is not present.
@@ -6592,12 +6715,9 @@ function drupalgap_entity_render_content(entity_type, entity) {
         }
         // Skip hidden fields.
         if (display.type == 'hidden') { return; }
-        // Save the field name and weight.
+        // Save the field display and weight.
+        field_displays[field_name] = display;
         field_weights[field_name] = display.weight;
-        // Save the field content.
-        field_content[field_name] = drupalgap_entity_render_field(
-          entity_type, entity, field_name, field, display
-        );
     });
     // Extract the field weights and sort them.
     var extracted_weights = [];
@@ -6606,15 +6726,20 @@ function drupalgap_entity_render_content(entity_type, entity) {
     });
     extracted_weights.sort(function(a, b) { return a - b; });
     // For each sorted weight, locate the field with the corresponding weight,
-    // then add that field's content to the entity, if it hasn't already been
-    // added.
+    // then render it's field content.
     var completed_fields = [];
     $.each(extracted_weights, function(weight_index, target_weight) {
         $.each(field_weights, function(field_name, weight) {
             if (target_weight == weight) {
               if (completed_fields.indexOf(field_name) == -1) {
                 completed_fields.push(field_name);
-                entity.content += field_content[field_name];
+                entity.content += drupalgap_entity_render_field(
+                  entity_type,
+                  entity,
+                  field_name,
+                  field_info[field_name],
+                  field_displays[field_name]
+                );
                 return false;
               }
             }
@@ -6675,13 +6800,20 @@ function drupalgap_entity_render_field(entity_type, entity, field_name,
       // to the entity's content.
       var fn = window[function_name];
       var items = null;
+      // Check to see if translated content based on app's language setting
+      // is present or not. If yes, then use that language as per setting.
       // Determine the language code. Note, multi lingual sites may have a
       // language code on the entity, but still have 'und' on the field, so
       // fall back to 'und' if the field's language code doesn't match the
       // entity's language code.
+
+      var default_lang = language_default();
       var language = entity.language;
       if (entity[field_name]) {
-        if (entity[field_name][language]) {
+        if (entity[field_name][default_lang]) {
+          items = entity[field_name][default_lang];
+        }
+        else if (entity[field_name][language]) {
           items = entity[field_name][language];
         }
         else if (entity[field_name]['und']) {
@@ -6764,6 +6896,12 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
     var language = language_default();
     $.each(form_state.values, function(name, value) {
 
+        // Skip elements with restricted access.
+        if (
+          typeof form.elements[name].access !== 'undefined' &&
+          !form.elements[name].access
+        ) { return; }
+
         // Determine wether or not this element is a field. If it is, determine
         // it's module and field assembly hook.
         var is_field = false;
@@ -6843,12 +6981,16 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
               // The geofield module is an example of field that doesn't use a
               // key. The use_wrapper flag allows others to completely override
               // the use of a wrapper around the field value, e.g. taxonomy term
-              // reference autocomplete.
+              // reference autocomplete. We'll attach any other helpful
+              // variables here as well (element name, form id, etc).
               var field_key = {
                 value: 'value',
                 use_key: true,
                 use_wrapper: true,
-                use_delta: use_delta
+                use_delta: use_delta,
+                name: name,
+                form_id: form.id,
+                element_id: form.elements[name][language][delta].id
               };
 
               // If this element is a field, give the field's module an
@@ -9474,13 +9616,24 @@ function node_page_view_pageshow(nid) {
   try {
     node_load(nid, {
         success: function(node) {
+          
+          // By this point the node's content has been assembled into an html
+          // string.
+          // @see entity_services_request_pre_postprocess_alter()
+          
           // Build the node display.
+          //For title the translation must be taken into account
+          var default_language = language_default();
+          var node_title = node.title;
+          if (node.title_field && node.title_field[default_language]) {
+                node_title = node.title_field[default_language][0].safe_value;
+          }
           var build = {
             'theme': 'node',
             // @todo - is this line of code doing anything?
             'node': node,
             // @todo - this is a core field and should by fetched from entity.js
-            'title': {'markup': node.title},
+            'title': {'markup': node_title},
             'content': {'markup': node.content}
           };
           // If the comments are closed (1) or open (2), show the comments.
@@ -10104,7 +10257,9 @@ function system_dashboard_page() {
     };
     content.welcome = {
       markup: '<h2 style="text-align: center;">Welcome to DrupalGap</h2>' +
-        '<p>The open source mobile application development kit for Drupal!</p>'
+        '<p style="text-align: center;">' +
+          'The open source application development kit for Drupal!' +
+        '</p>'
     };
     if (drupalgap.settings.logo) {
       content.logo = {
