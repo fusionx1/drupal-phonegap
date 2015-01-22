@@ -119,15 +119,15 @@ function drupalgap_entity_render_content(entity_type, entity) {
   try {
     entity.content = '';
     // Render each field on the entity, using the default display. The fields
-    // need to be appended according to their weight, so we'll keep track of
-    // the weights and displays, then at the end we'll render them and append
-    // them in order onto the entity's content.
+    // need to be appended accorind to their weight, so we'll keep track of
+    // the weights and rendered field content as we iterate through the fields,
+    // then at the end will append them in order onto the entity's content.
     var bundle = entity.type;
     if (entity_type == 'comment') { bundle = entity.bundle; }
     var field_info = drupalgap_field_info_instances(entity_type, bundle);
     if (!field_info) { return; }
+    var field_content = {};
     var field_weights = {};
-    var field_displays = {};
     $.each(field_info, function(field_name, field) {
         // Determine which display mode to use. The default mode will be used
         // if the drupalgap display mode is not present.
@@ -144,9 +144,12 @@ function drupalgap_entity_render_content(entity_type, entity) {
         }
         // Skip hidden fields.
         if (display.type == 'hidden') { return; }
-        // Save the field display and weight.
-        field_displays[field_name] = display;
+        // Save the field name and weight.
         field_weights[field_name] = display.weight;
+        // Save the field content.
+        field_content[field_name] = drupalgap_entity_render_field(
+          entity_type, entity, field_name, field, display
+        );
     });
     // Extract the field weights and sort them.
     var extracted_weights = [];
@@ -155,20 +158,15 @@ function drupalgap_entity_render_content(entity_type, entity) {
     });
     extracted_weights.sort(function(a, b) { return a - b; });
     // For each sorted weight, locate the field with the corresponding weight,
-    // then render it's field content.
+    // then add that field's content to the entity, if it hasn't already been
+    // added.
     var completed_fields = [];
     $.each(extracted_weights, function(weight_index, target_weight) {
         $.each(field_weights, function(field_name, weight) {
             if (target_weight == weight) {
               if (completed_fields.indexOf(field_name) == -1) {
                 completed_fields.push(field_name);
-                entity.content += drupalgap_entity_render_field(
-                  entity_type,
-                  entity,
-                  field_name,
-                  field_info[field_name],
-                  field_displays[field_name]
-                );
+                entity.content += field_content[field_name];
                 return false;
               }
             }
@@ -229,20 +227,13 @@ function drupalgap_entity_render_field(entity_type, entity, field_name,
       // to the entity's content.
       var fn = window[function_name];
       var items = null;
-      // Check to see if translated content based on app's language setting
-      // is present or not. If yes, then use that language as per setting.
       // Determine the language code. Note, multi lingual sites may have a
       // language code on the entity, but still have 'und' on the field, so
       // fall back to 'und' if the field's language code doesn't match the
       // entity's language code.
-
-      var default_lang = language_default();
       var language = entity.language;
       if (entity[field_name]) {
-        if (entity[field_name][default_lang]) {
-          items = entity[field_name][default_lang];
-        }
-        else if (entity[field_name][language]) {
+        if (entity[field_name][language]) {
           items = entity[field_name][language];
         }
         else if (entity[field_name]['und']) {
@@ -325,12 +316,6 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
     var language = language_default();
     $.each(form_state.values, function(name, value) {
 
-        // Skip elements with restricted access.
-        if (
-          typeof form.elements[name].access !== 'undefined' &&
-          !form.elements[name].access
-        ) { return; }
-
         // Determine wether or not this element is a field. If it is, determine
         // it's module and field assembly hook.
         var is_field = false;
@@ -410,16 +395,12 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
               // The geofield module is an example of field that doesn't use a
               // key. The use_wrapper flag allows others to completely override
               // the use of a wrapper around the field value, e.g. taxonomy term
-              // reference autocomplete. We'll attach any other helpful
-              // variables here as well (element name, form id, etc).
+              // reference autocomplete.
               var field_key = {
                 value: 'value',
                 use_key: true,
                 use_wrapper: true,
-                use_delta: use_delta,
-                name: name,
-                form_id: form.id,
-                element_id: form.elements[name][language][delta].id
+                use_delta: use_delta
               };
 
               // If this element is a field, give the field's module an

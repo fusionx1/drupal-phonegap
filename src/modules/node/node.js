@@ -247,24 +247,13 @@ function node_page_view_pageshow(nid) {
   try {
     node_load(nid, {
         success: function(node) {
-          
-          // By this point the node's content has been assembled into an html
-          // string.
-          // @see entity_services_request_pre_postprocess_alter()
-          
           // Build the node display.
-          //For title the translation must be taken into account
-          var default_language = language_default();
-          var node_title = node.title;
-          if (node.title_field && node.title_field[default_language]) {
-                node_title = node.title_field[default_language][0].safe_value;
-          }
           var build = {
             'theme': 'node',
             // @todo - is this line of code doing anything?
             'node': node,
             // @todo - this is a core field and should by fetched from entity.js
-            'title': {'markup': node_title},
+            'title': {'markup': node.title},
             'content': {'markup': node.content}
           };
           // If the comments are closed (1) or open (2), show the comments.
